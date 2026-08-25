@@ -1,0 +1,243 @@
+<?php
+declare(strict_types=1);
+
+header('Content-Type: application/json; charset=utf-8');
+
+const MODEL = 'gemini-3.5-flash-lite';
+const MAX_MESSAGES = 40;
+const MAX_CHARS = 4000;
+const SEARCH_RESULT_COUNT = 5;
+
+function load_config(): array
+{
+    $path = __DIR__ . '/config.php';
+    return is_readable($path) ? (require $path) : [];
+}
+
+function load_system_prompt(): string
+{
+    $path = __DIR__ . '/SYSTEM_PROMPT.txt';
+    if (!is_readable($path)) {
+        return '';
+    }
+    $text = file_get_contents($path);
+    return $text === false ? '' : trim($text);
+}
+
+function fail(int $status, string $message): never
+{
+    http_response_code($status);
+    echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function call_gemini(array $body, string $apiKey): array
+{
+    $url = sprintf(
+        'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent',
+        MODEL
+    );
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'x-goog-api-key: ' . $apiKey,
+        ],
+        CURLOPT_POSTFIELDS => json_encode($body, JSON_UNESCAPED_UNICODE),
+    ]);
+
+    $response = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        fail(502, 'Could not reach Gemini: ' . $curlErr);
+    }
+
+    $decoded = json_decode($response, true);
+
+    if ($status === 429) {
+        $detail = $decoded['error']['message'] ?? 'Unknown error.';
+        fail(429, 'Rate limit reached: ' . $detail);
+    }
+
+    if ($status !== 200) {
+        $detail = $decoded['error']['message'] ?? 'Unknown error.';
+        fail($status ?: 502, 'Gemini returned an error: ' . $detail);
+    }
+
+    return $decoded;
+}
+
+// Free, no-billing web search via Tavily (1,000 free searches/month,
+// no credit card required). Returns [] on any failure or missing config.
+function web_search(string $query, string $apiKey): array
+{
+    $ch = curl_init('https://api.tavily.com/search');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . $apiKey,
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            'query' => $query,
+            'max_results' => SEARCH_RESULT_COUNT,
+            'search_depth' => 'basic',
+        ], JSON_UNESCAPED_UNICODE),
+    ]);
+    $response = curl_exec($ch);
+    curl_close($ch);
+
+    if ($response === false) {
+        return [];
+    }
+
+    $decoded = json_decode($response, true);
+    $results = [];
+    foreach ($decoded['results'] ?? [] as $item) {
+        $link = $item['url'] ?? '';
+        if ($link === '') {
+            continue;
+        }
+        $results[] = [
+            'title' => $item['title'] ?? $link,
+            'link' => $link,
+            'snippet' => $item['content'] ?? '',
+        ];
+    }
+    return $results;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    fail(405, 'Send a POST request.');
+}
+
+$raw = file_get_contents('php://input');
+if ($raw === false || $raw === '') {
+    fail(400, 'Empty request body.');
+}
+
+$payload = json_decode($raw, true);
+if (!is_array($payload) || !isset($payload['messages']) || !is_array($payload['messages'])) {
+    fail(400, 'Request needs a "messages" array.');
+}
+
+$config = load_config();
+$apiKey = trim((string)($config['GEMINI_API_KEY'] ?? ''));
+if ($apiKey === '') {
+    fail(500, 'No API key on the server. Check api/config.php.');
+}
+
+$tavilyApiKey = trim((string)($config['TAVILY_API_KEY'] ?? ''));
+$searchEnabled = $tavilyApiKey !== '';
+
+$messages = array_slice($payload['messages'], -MAX_MESSAGES);
+$contents = [];
+
+foreach ($messages as $message) {
+    $role = ($message['role'] ?? '') === 'model' ? 'model' : 'user';
+    $text = mb_substr(trim((string)($message['text'] ?? '')), 0, MAX_CHARS);
+    if ($text === '') {
+        continue;
+    }
+    $contents[] = ['role' => $role, 'parts' => [['text' => $text]]];
+}
+
+if ($contents === []) {
+    fail(400, 'Nothing to send.');
+}
+
+$body = [
+    'contents' => $contents,
+    'generationConfig' => [
+        'temperature' => 0.8,
+        'maxOutputTokens' => 2048,
+    ],
+];
+
+if ($searchEnabled) {
+    $body['tools'] = [[
+        'functionDeclarations' => [[
+            'name' => 'web_search',
+            'description' => 'Search the live web for current information: news, prices, weather, recent events, or anything that may have changed since training. Use it whenever the answer depends on up-to-date facts.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'The search query.'],
+                ],
+                'required' => ['query'],
+            ],
+        ]],
+    ]];
+}
+
+$systemPrompt = load_system_prompt();
+if ($systemPrompt !== '') {
+    $body['systemInstruction'] = [
+        'parts' => [['text' => mb_substr($systemPrompt, 0, MAX_CHARS)]],
+    ];
+}
+
+$decoded = call_gemini($body, $apiKey);
+$candidate = $decoded['candidates'][0] ?? null;
+$parts = $candidate['content']['parts'] ?? [];
+
+$sources = [];
+
+$functionCallPart = null;
+foreach ($parts as $part) {
+    if (isset($part['functionCall']['name']) && $part['functionCall']['name'] === 'web_search') {
+        $functionCallPart = $part;
+        break;
+    }
+}
+
+if ($functionCallPart !== null && $searchEnabled) {
+    $query = trim((string)($functionCallPart['functionCall']['args']['query'] ?? ''));
+    $results = $query !== '' ? web_search($query, $tavilyApiKey) : [];
+
+    $seenUris = [];
+    foreach ($results as $r) {
+        if (isset($seenUris[$r['link']])) {
+            continue;
+        }
+        $seenUris[$r['link']] = true;
+        $sources[] = ['title' => $r['title'], 'uri' => $r['link']];
+    }
+
+    $body['contents'][] = ['role' => 'model', 'parts' => [$functionCallPart]];
+    $body['contents'][] = [
+        'role' => 'user',
+        'parts' => [[
+            'functionResponse' => [
+                'name' => 'web_search',
+                'response' => ['results' => $results],
+            ],
+        ]],
+    ];
+
+    $decoded = call_gemini($body, $apiKey);
+    $candidate = $decoded['candidates'][0] ?? null;
+}
+
+$reply = $candidate['content']['parts'][0]['text'] ?? '';
+
+if ($reply === '') {
+    $reason = $candidate['finishReason'] ?? 'unknown';
+    fail(502, 'The model returned no text (finish reason: ' . $reason . ').');
+}
+
+$result = ['reply' => $reply];
+if ($sources !== []) {
+    $result['sources'] = $sources;
+}
+
+echo json_encode($result, JSON_UNESCAPED_UNICODE);

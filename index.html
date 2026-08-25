@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta property="og:title" content="NikTaRas AI">
+<meta property="og:description" content="A chat interface powered by NikTaRas AI">
+<meta property="og:image" content="https://web.niktaras.com/ai/og-image.JPG">
+<meta property="og:url" content="https://web.niktaras.com/ai/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NikTaRas AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14161c;
+    --ink-soft: #4a4f5c;
+    --paper: #e8e4dc;
+    --paper-warm: #f2efe9;
+    --rule: #c9c3b8;
+    --mark: #2f5d50;
+    --alert: #8c3b2e;
+    --serif: "Newsreader", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.55;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .frame {
+    width: 100%;
+    max-width: 720px;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper-warm);
+    border-left: 1px solid var(--rule);
+    border-right: 1px solid var(--rule);
+  }
+
+  header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  h1 { margin: 0; font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  .clear {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+    padding: 2px 0;
+    cursor: pointer;
+  }
+  .clear:hover { color: var(--ink); border-color: var(--ink); }
+
+  #transcript {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 24px 24px;
+    scroll-behavior: smooth;
+  }
+
+  .turn {
+    display: grid;
+    grid-template-columns: 68px 1fr;
+    gap: 16px;
+    padding: 18px 0;
+    border-bottom: 1px solid rgba(201, 195, 184, 0.5);
+    animation: rise 0.28s ease-out;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .turn { animation: none; }
+    #transcript { scroll-behavior: auto; }
+  }
+
+  .who {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding-top: 5px;
+  }
+
+  .turn[data-role="model"] .who { color: var(--mark); }
+  .turn[data-role="error"] .who { color: var(--alert); }
+  .turn[data-role="error"] .body { color: var(--alert); }
+
+  .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .turn[data-role="model"] .body { white-space: normal; }
+
+  .body h1, .body h2, .body h3 {
+    margin: 0.6em 0 0.3em;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .body h1:first-child, .body h2:first-child, .body h3:first-child { margin-top: 0; }
+  .body h1 { font-size: 1.25em; }
+  .body h2 { font-size: 1.15em; }
+  .body h3 { font-size: 1.05em; }
+
+  .body p { margin: 0 0 0.7em; }
+  .body p:last-child { margin-bottom: 0; }
+
+  .body ul, .body ol { margin: 0 0 0.7em; padding-left: 1.3em; }
+  .body ul:last-child, .body ol:last-child { margin-bottom: 0; }
+  .body li { margin: 0.15em 0; }
+
+  .body strong { font-weight: 600; }
+  .body em { font-style: italic; }
+
+  .body code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(47, 93, 80, 0.09);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+
+  .body pre {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    line-height: 1.5;
+    background: rgba(20, 22, 28, 0.05);
+    padding: 10px 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0 0 0.7em;
+  }
+  .body pre code { background: none; padding: 0; }
+
+  .body a { color: var(--mark); }
+
+  .sources {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(201, 195, 184, 0.5);
+  }
+  .sources-toggle {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+    padding: 2px 0;
+    cursor: pointer;
+  }
+  .sources-toggle:hover { color: var(--ink); border-color: var(--ink); }
+  .sources-list {
+    margin: 8px 0 0;
+    padding-left: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .sources-list li { margin: 2px 0; }
+  .sources-list a { color: var(--mark); }
+
+  .empty { padding: 48px 0; color: var(--ink-soft); font-style: italic; }
+
+  .waiting span {
+    display: inline-block;
+    width: 5px; height: 5px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+    animation: pulse 1.2s infinite ease-in-out;
+  }
+  .waiting span:nth-child(2) { animation-delay: 0.15s; }
+  .waiting span:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes pulse {
+    0%, 60%, 100% { opacity: 0.25; }
+    30% { opacity: 1; }
+  }
+
+  form {
+    border-top: 1px solid var(--rule);
+    padding: 14px 24px calc(14px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    background: var(--paper-warm);
+  }
+
+  textarea {
+    flex: 1;
+    resize: none;
+    border: none;
+    background: none;
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.5;
+    color: var(--ink);
+    max-height: 160px;
+    padding: 6px 0;
+  }
+  textarea:focus { outline: none; }
+  textarea::placeholder { color: var(--ink-soft); opacity: 0.7; }
+
+  button[type="submit"] {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--ink);
+    color: var(--paper-warm);
+    border: none;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button[type="submit"]:hover:not(:disabled) { opacity: 0.85; }
+  button[type="submit"]:disabled { opacity: 0.3; cursor: default; }
+
+  :focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    header, #transcript, form { padding-left: 16px; padding-right: 16px; }
+    .turn { grid-template-columns: 1fr; gap: 6px; }
+    .who { padding-top: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <header>
+    <h1>Chat</h1>
+    <div style="display:flex;align-items:baseline;gap:14px">
+      <span class="meta">NikTaRas AI</span>
+      <button type="button" class="clear" id="clear">Clear</button>
+    </div>
+  </header>
+
+  <div id="transcript" aria-live="polite">
+    <p class="empty">Ask something to begin.</p>
+  </div>
+
+  <form id="composer">
+    <textarea id="input" rows="1" placeholder="Type a message…" autocomplete="off"></textarea>
+    <button type="submit" id="send">Send</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ENDPOINT = "/ai/api/chat.php";
+
+  // Change this to give the assistant a personality or a job.
+  var SYSTEM_PROMPT = "";
+
+  var transcript = document.getElementById("transcript");
+  var form = document.getElementById("composer");
+  var input = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+  var clearBtn = document.getElementById("clear");
+
+  var history = [];
+  var busy = false;
+
+  function labelFor(role) {
+    if (role === "user") return "You";
+    if (role === "model") return "NikTaRas AI";
+    return "Error";
+  }
+
+  function addTurn(role, text) {
+    var placeholder = transcript.querySelector(".empty");
+    if (placeholder) placeholder.remove();
+
+    var turn = document.createElement("div");
+    turn.className = "turn";
+    turn.setAttribute("data-role", role);
+
+    var who = document.createElement("div");
+    who.className = "who";
+    who.textContent = labelFor(role);
+
+    var body = document.createElement("div");
+    body.className = "body";
+    body.textContent = text;
+
+    turn.appendChild(who);
+    turn.appendChild(body);
+    transcript.appendChild(turn);
+    transcript.scrollTop = transcript.scrollHeight;
+
+    return body;
+  }
+
+  function renderSources(sources) {
+    var wrap = document.createElement("div");
+    wrap.className = "sources";
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "sources-toggle";
+    toggle.textContent = "Show sources (" + sources.length + ")";
+
+    var list = document.createElement("ol");
+    list.className = "sources-list";
+    list.hidden = true;
+    sources.forEach(function (s) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = s.uri;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = s.title || s.uri;
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+
+    toggle.addEventListener("click", function () {
+      var willShow = list.hidden;
+      list.hidden = !willShow;
+      toggle.textContent = willShow ? "Hide sources" : "Show sources (" + sources.length + ")";
+    });
+
+    wrap.appendChild(toggle);
+    wrap.appendChild(list);
+
+    return wrap;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // Minimal, safe markdown renderer: escapes HTML first, then converts
+  // a small subset of markdown to a fixed set of whitelisted tags.
+  function renderMarkdown(text) {
+    var escaped = escapeHtml(text);
+
+    var codeBlocks = [];
+    escaped = escaped.replace(/```[^\n]*\n?([\s\S]*?)```/g, function (_, code) {
+      codeBlocks.push(code.replace(/\n$/, ""));
+      return " CODEBLOCK" + (codeBlocks.length - 1) + " ";
+    });
+
+    escaped = escaped.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    escaped = escaped.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    escaped = escaped.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+    escaped = escaped.replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g, "$1<em>$2</em>");
+    escaped = escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    escaped = escaped.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    escaped = escaped.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    escaped = escaped.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+
+    var blocks = escaped.split(/\n{2,}/);
+    var html = blocks.map(function (block) {
+      var trimmed = block.trim();
+
+      var codeMatch = trimmed.match(/^ CODEBLOCK(\d+) $/);
+      if (codeMatch) {
+        return "<pre><code>" + codeBlocks[parseInt(codeMatch[1], 10)] + "</code></pre>";
+      }
+
+      if (/^<h[1-3]>/.test(trimmed)) {
+        return trimmed;
+      }
+
+      var lines = block.split("\n").filter(function (l) { return l.trim() !== ""; });
+      var isUl = lines.length > 0 && lines.every(function (l) { return /^\s*[-*]\s+/.test(l); });
+      var isOl = lines.length > 0 && lines.every(function (l) { return /^\s*\d+\.\s+/.test(l); });
+
+      if (isUl) {
+        return "<ul>" + lines.map(function (l) {
+          return "<li>" + l.replace(/^\s*[-*]\s+/, "") + "</li>";
+        }).join("") + "</ul>";
+      }
+      if (isOl) {
+        return "<ol>" + lines.map(function (l) {
+          return "<li>" + l.replace(/^\s*\d+\.\s+/, "") + "</li>";
+        }).join("") + "</ol>";
+      }
+
+      return "<p>" + block.replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+
+    html = html.replace(/ CODEBLOCK(\d+) /g, function (_, i) {
+      return "<pre><code>" + codeBlocks[parseInt(i, 10)] + "</code></pre>";
+    });
+
+    return html;
+  }
+
+  function showWaiting() {
+    var body = addTurn("model", "");
+    body.innerHTML = '<span class="waiting"><span></span><span></span><span></span></span>';
+    return body;
+  }
+
+  function setBusy(state) {
+    busy = state;
+    sendBtn.disabled = state;
+    sendBtn.textContent = state ? "…" : "Send";
+  }
+
+  function autoGrow() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  }
+
+  async function send(text) {
+    history.push({ role: "user", text: text });
+    addTurn("user", text);
+
+    var slot = showWaiting();
+    setBusy(true);
+
+    try {
+      var response = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history, system: SYSTEM_PROMPT })
+      });
+
+      var data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Request failed.");
+      }
+
+      slot.innerHTML = renderMarkdown(data.reply);
+      if (Array.isArray(data.sources) && data.sources.length) {
+        slot.appendChild(renderSources(data.sources));
+      }
+      history.push({ role: "model", text: data.reply });
+
+    } catch (err) {
+      slot.textContent = err.message;
+      slot.parentElement.setAttribute("data-role", "error");
+      slot.parentElement.querySelector(".who").textContent = "Error";
+      history.pop();
+    } finally {
+      setBusy(false);
+      transcript.scrollTop = transcript.scrollHeight;
+      input.focus();
+    }
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = input.value.trim();
+    if (!text || busy) return;
+
+    input.value = "";
+    autoGrow();
+    send(text);
+  });
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(pointer: fine)").matches) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  input.addEventListener("input", autoGrow);
+
+  clearBtn.addEventListener("click", function () {
+    history = [];
+    transcript.innerHTML = '<p class="empty">Ask something to begin.</p>';
+    input.focus();
+  });
+
+  input.focus();
+})();
+</script>
+
+</body>
+</html>
