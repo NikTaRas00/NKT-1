@@ -137,7 +137,8 @@ if ($apiKey === '') {
 }
 
 $tavilyApiKey = trim((string)($config['TAVILY_API_KEY'] ?? ''));
-$searchEnabled = $tavilyApiKey !== '';
+$webAccessRequested = ($payload['webAccess'] ?? false) === true;
+$searchEnabled = $tavilyApiKey !== '' && $webAccessRequested;
 
 $messages = array_slice($payload['messages'], -MAX_MESSAGES);
 $contents = [];

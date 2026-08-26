@@ -253,6 +253,26 @@
   button[type="submit"]:hover:not(:disabled) { opacity: 0.85; }
   button[type="submit"]:disabled { opacity: 0.3; cursor: default; }
 
+  #webToggle {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    padding: 9px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  #webToggle:hover { border-color: var(--ink); color: var(--ink); }
+  #webToggle[aria-pressed="true"] {
+    background: var(--mark);
+    border-color: var(--mark);
+    color: var(--paper-warm);
+  }
+
   :focus-visible { outline: 2px solid var(--mark); outline-offset: 2px; }
 
   @media (max-width: 560px) {
@@ -279,6 +299,7 @@
   </div>
 
   <form id="composer">
+    <button type="button" id="webToggle" aria-pressed="false">Web Access</button>
     <textarea id="input" rows="1" placeholder="Type a message…" autocomplete="off"></textarea>
     <button type="submit" id="send">Send</button>
   </form>
@@ -298,9 +319,11 @@
   var input = document.getElementById("input");
   var sendBtn = document.getElementById("send");
   var clearBtn = document.getElementById("clear");
+  var webToggle = document.getElementById("webToggle");
 
   var history = [];
   var busy = false;
+  var webAccess = false;
 
   function labelFor(role) {
     if (role === "user") return "You";
@@ -461,7 +484,7 @@
       var response = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, system: SYSTEM_PROMPT })
+        body: JSON.stringify({ messages: history, system: SYSTEM_PROMPT, webAccess: webAccess })
       });
 
       var data = await response.json();
@@ -511,6 +534,11 @@
     history = [];
     transcript.innerHTML = '<p class="empty">Ask something to begin.</p>';
     input.focus();
+  });
+
+  webToggle.addEventListener("click", function () {
+    webAccess = !webAccess;
+    webToggle.setAttribute("aria-pressed", webAccess ? "true" : "false");
   });
 
   input.focus();
