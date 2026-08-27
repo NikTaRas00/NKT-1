@@ -24,8 +24,16 @@ function load_system_prompt(): string
     return $text === false ? '' : trim($text);
 }
 
-function fail(int $status, string $message): never
+// $message is shown to the user verbatim, so it must never name Gemini,
+// expose server file paths, or repeat upstream error text (SYSTEM_PROMPT.txt
+// forbids the model itself from admitting it's Gemini; a leaked error message
+// would break that at the exact moment the user is already stressed). Pass
+// the real detail via $internalDetail so it still reaches the server log.
+function fail(int $status, string $message, ?string $internalDetail = null): never
 {
+    if ($internalDetail !== null) {
+        error_log('[NKT-1 chat.php] ' . $message . ' | ' . $internalDetail);
+    }
     http_response_code($status);
     echo json_encode(['error' => $message], JSON_UNESCAPED_UNICODE);
     exit;
@@ -56,19 +64,19 @@ function call_gemini(array $body, string $apiKey): array
     curl_close($ch);
 
     if ($response === false) {
-        fail(502, 'Could not reach Gemini: ' . $curlErr);
+        fail(502, "NKT-1 couldn't reach its model just now. Please try again in a moment.", 'curl error: ' . $curlErr);
     }
 
     $decoded = json_decode($response, true);
 
     if ($status === 429) {
         $detail = $decoded['error']['message'] ?? 'Unknown error.';
-        fail(429, 'Rate limit reached: ' . $detail);
+        fail(429, 'NKT-1 is getting a lot of requests right now. Please wait a moment and try again.', $detail);
     }
 
     if ($status !== 200) {
         $detail = $decoded['error']['message'] ?? 'Unknown error.';
-        fail($status ?: 502, 'Gemini returned an error: ' . $detail);
+        fail($status ?: 502, 'NKT-1 hit a problem answering that. Please try again.', 'upstream status ' . $status . ': ' . $detail);
     }
 
     return $decoded;
@@ -133,7 +141,7 @@ if (!is_array($payload) || !isset($payload['messages']) || !is_array($payload['m
 $config = load_config();
 $apiKey = trim((string)($config['GEMINI_API_KEY'] ?? ''));
 if ($apiKey === '') {
-    fail(500, 'No API key on the server. Check api/config.php.');
+    fail(500, "NKT-1 isn't configured correctly right now. Please try again later.", 'GEMINI_API_KEY missing in api/config.php');
 }
 
 $tavilyApiKey = trim((string)($config['TAVILY_API_KEY'] ?? ''));
@@ -233,7 +241,7 @@ $reply = $candidate['content']['parts'][0]['text'] ?? '';
 
 if ($reply === '') {
     $reason = $candidate['finishReason'] ?? 'unknown';
-    fail(502, 'The model returned no text (finish reason: ' . $reason . ').');
+    fail(502, "NKT-1 didn't have a response for that. Please try rephrasing or try again.", 'empty reply, finishReason: ' . $reason);
 }
 
 $result = ['reply' => $reply];
