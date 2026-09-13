@@ -78,30 +78,6 @@
     color: var(--ink-soft);
   }
 
-  .clear {
-    position: relative;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    background: none;
-    border: none;
-    border-bottom: 1px solid var(--rule);
-    color: var(--ink-soft);
-    padding: 2px 0;
-    cursor: pointer;
-    transition: color 120ms ease-out, border-color 120ms ease-out, opacity 90ms ease-out;
-  }
-  .clear:hover { color: var(--ink); border-color: var(--ink); }
-  .clear:active { opacity: 0.6; }
-  /* Invisible expanded hit area: keeps the small underlined-text look but
-     gives it a real ~44px touch target, per WCAG 2.5.5. */
-  .clear::after {
-    content: "";
-    position: absolute;
-    top: -16px; bottom: -16px; left: -12px; right: -12px;
-  }
-
   #transcript {
     position: absolute;
     inset: 0;
@@ -474,7 +450,7 @@
     <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
       <span class="meta">NikTaRas AI</span>
       <div id="accountArea" style="display:flex;align-items:baseline;gap:14px"></div>
-      <button type="button" class="clear" id="clear">Clear</button>
+      <button type="button" class="textbtn" id="newChat">New Chat</button>
     </div>
   </header>
 
@@ -533,7 +509,7 @@
   var form = document.getElementById("composer");
   var input = document.getElementById("input");
   var sendBtn = document.getElementById("send");
-  var clearBtn = document.getElementById("clear");
+  var newChatBtn = document.getElementById("newChat");
   var webToggle = document.getElementById("webToggle");
   var accountArea = document.getElementById("accountArea");
 
@@ -1073,28 +1049,28 @@
 
   input.addEventListener("input", autoGrow);
 
-  // Clearing wipes the visible conversation with no undo, so require a
-  // second click within a short window rather than wiping it on one
-  // accidental tap.
-  var clearArmed = false;
-  var clearArmTimer = null;
+  // Starting a new chat discards the visible conversation with no undo for
+  // signed-out users (nothing is saved), so require a second click within a
+  // short window rather than wiping it on one accidental tap.
+  var newChatArmed = false;
+  var newChatArmTimer = null;
 
-  clearBtn.addEventListener("click", function () {
+  newChatBtn.addEventListener("click", function () {
     if (history.length === 0) return;
 
-    if (!clearArmed) {
-      clearArmed = true;
-      clearBtn.textContent = "Confirm?";
-      clearArmTimer = setTimeout(function () {
-        clearArmed = false;
-        clearBtn.textContent = "Clear";
+    if (!newChatArmed) {
+      newChatArmed = true;
+      newChatBtn.textContent = "Confirm?";
+      newChatArmTimer = setTimeout(function () {
+        newChatArmed = false;
+        newChatBtn.textContent = "New Chat";
       }, 3000);
       return;
     }
 
-    clearTimeout(clearArmTimer);
-    clearArmed = false;
-    clearBtn.textContent = "Clear";
+    clearTimeout(newChatArmTimer);
+    newChatArmed = false;
+    newChatBtn.textContent = "New Chat";
     startNewChat();
     input.focus();
   });
