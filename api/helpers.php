@@ -3,8 +3,13 @@ declare(strict_types=1);
 
 function load_config(): array
 {
+    static $config = null;
+    if ($config !== null) {
+        return $config;
+    }
     $path = __DIR__ . '/config.php';
-    return is_readable($path) ? (require $path) : [];
+    $config = is_readable($path) ? (require_once $path) : [];
+    return $config;
 }
 
 function send_verification_email(string $email, string $rawToken): void
