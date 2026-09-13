@@ -47,7 +47,7 @@ function db_or_fail(): PDO
     } catch (Throwable $e) {
         error_log('[NKT-1 accounts] ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['error' => 'Accounts aren\'t set up on this server yet.']);
+        echo json_encode(['error' => 'The database isn\'t set up on this server yet.']);
         exit;
     }
 }
@@ -69,4 +69,18 @@ function require_login(): array
         exit;
     }
     return $user;
+}
+
+function is_admin(): bool
+{
+    return !empty($_SESSION['is_admin']);
+}
+
+function require_admin(): void
+{
+    if (!is_admin()) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Admin access required.']);
+        exit;
+    }
 }

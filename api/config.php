@@ -49,4 +49,9 @@ return [
     // Lets a visitor bypass the 5-messages/hour rate limit one message at a
     // time (see api/chat.php). Leave blank to disable bypassing entirely.
     'UNLOCK_CODE' => niktaras_env('UNLOCK_CODE', $dotenv),
+    // Gates the /admin/ panel (see api/admin_login.php). Separate from
+    // UNLOCK_CODE on purpose -- anyone given the unlock code to bypass the
+    // rate limit should not thereby gain access to every account's and every
+    // anonymous visitor's chat history.
+    'ADMIN_CODE' => niktaras_env('ADMIN_CODE', $dotenv),
 ];

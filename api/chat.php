@@ -12,6 +12,17 @@ const SEARCH_RESULT_COUNT = 5;
 const RATE_LIMIT = 5;
 const RATE_LIMIT_WINDOW = 3600;
 
+function check_unlock_code(array $config, array $payload): array
+{
+    $validCode = trim((string)($config['UNLOCK_CODE'] ?? ''));
+    $providedCode = trim((string)($payload['unlockCode'] ?? ''));
+    $ok = $validCode !== '' && $providedCode !== '' && hash_equals($validCode, $providedCode);
+    $message = $providedCode === ''
+        ? "You've reached the hourly limit. Enter your access code to send another message."
+        : 'Incorrect code.';
+    return [$ok, $message];
+}
+
 function load_system_prompt(): string
 {
     $path = __DIR__ . '/SYSTEM_PROMPT.txt';
@@ -142,36 +153,74 @@ if ($apiKey === '') {
     fail(500, "NKT-1 isn't configured correctly right now. Please try again later.", 'GEMINI_API_KEY missing in api/config.php');
 }
 
-// 5 prompts/hour per browser session; once spent, each further message needs
-// a correct UNLOCK_CODE (api/.env), one message at a time -- the window and
-// count are never reset just for entering a code, so it must be re-entered
-// for every message after the fifth until the hour rolls over.
+// Rate limit: 5 messages/hour by default. Logged-in accounts get a
+// persistent, admin-adjustable limit (users.rate_limit -- see the admin
+// panel); anonymous visitors are limited per browser session instead, since
+// there's no stable identity to attach a custom limit to. Once spent, every
+// further message needs a correct UNLOCK_CODE (api/.env) -- one message per
+// correct entry, never resetting the window/count, so it must be re-entered
+// each time until the hour rolls over.
 bootstrap_session();
-
+$user = current_user();
 $now = time();
-if (empty($_SESSION['rate_window_start']) || ($now - $_SESSION['rate_window_start']) >= RATE_LIMIT_WINDOW) {
-    $_SESSION['rate_window_start'] = $now;
-    $_SESSION['rate_count'] = 0;
-}
+$needsCode = false;
+$codeError = '';
+$accountLimited = false;
 
-if (($_SESSION['rate_count'] ?? 0) >= RATE_LIMIT) {
-    $validCode = trim((string)($config['UNLOCK_CODE'] ?? ''));
-    $providedCode = trim((string)($payload['unlockCode'] ?? ''));
-    $codeOk = $validCode !== '' && $providedCode !== '' && hash_equals($validCode, $providedCode);
+if ($user !== null) {
+    try {
+        $pdo = get_pdo();
+        $stmt = $pdo->prepare('SELECT rate_limit, rate_count, rate_window_start FROM users WHERE id = ?');
+        $stmt->execute([$user['id']]);
+        $row = $stmt->fetch();
 
-    if (!$codeOk) {
-        http_response_code(429);
-        echo json_encode([
-            'error' => $providedCode === ''
-                ? "You've reached the hourly limit. Enter your access code to send another message."
-                : 'Incorrect code.',
-            'needsCode' => true,
-        ]);
-        exit;
+        $limit = (int)($row['rate_limit'] ?? RATE_LIMIT);
+        $count = (int)($row['rate_count'] ?? 0);
+        $windowStart = !empty($row['rate_window_start']) ? strtotime($row['rate_window_start']) : false;
+
+        if ($windowStart === false || ($now - $windowStart) >= RATE_LIMIT_WINDOW) {
+            $windowStart = $now;
+            $count = 0;
+        }
+
+        if ($count >= $limit) {
+            [$codeOk, $codeError] = check_unlock_code($config, $payload);
+            $needsCode = !$codeOk;
+        }
+
+        if (!$needsCode) {
+            $count++;
+            $update = $pdo->prepare('UPDATE users SET rate_count = ?, rate_window_start = ? WHERE id = ?');
+            $update->execute([$count, date('Y-m-d H:i:s', $windowStart), $user['id']]);
+        }
+
+        $accountLimited = true;
+    } catch (Throwable $e) {
+        error_log('[NKT-1 chat.php] account rate-limit error, falling back to session limit: ' . $e->getMessage());
     }
 }
 
-$_SESSION['rate_count'] = ($_SESSION['rate_count'] ?? 0) + 1;
+if (!$accountLimited) {
+    if (empty($_SESSION['rate_window_start']) || ($now - $_SESSION['rate_window_start']) >= RATE_LIMIT_WINDOW) {
+        $_SESSION['rate_window_start'] = $now;
+        $_SESSION['rate_count'] = 0;
+    }
+
+    if (($_SESSION['rate_count'] ?? 0) >= RATE_LIMIT) {
+        [$codeOk, $codeError] = check_unlock_code($config, $payload);
+        $needsCode = !$codeOk;
+    }
+
+    if (!$needsCode) {
+        $_SESSION['rate_count'] = ($_SESSION['rate_count'] ?? 0) + 1;
+    }
+}
+
+if ($needsCode) {
+    http_response_code(429);
+    echo json_encode(['error' => $codeError, 'needsCode' => true]);
+    exit;
+}
 
 $tavilyApiKey = trim((string)($config['TAVILY_API_KEY'] ?? ''));
 $webAccessRequested = ($payload['webAccess'] ?? false) === true;
@@ -276,6 +325,37 @@ if ($reply === '') {
 $result = ['reply' => $reply];
 if ($sources !== []) {
     $result['sources'] = $sources;
+}
+
+// Logged-in users' chats are saved by the frontend calling
+// api/conversations.php; anonymous ones are never sent there, so this is the
+// only place they can be captured for the admin panel's "Anonymous Chats"
+// tab. Keyed by PHP session id, best-effort -- must never break the reply.
+if ($user === null) {
+    try {
+        $pdo = get_pdo();
+        $transcript = $messages;
+        $transcript[] = ['role' => 'model', 'text' => $reply];
+
+        $title = 'Untitled chat';
+        foreach ($transcript as $m) {
+            if (($m['role'] ?? '') === 'user') {
+                $candidate = trim((string)($m['text'] ?? ''));
+                if ($candidate !== '') {
+                    $title = mb_substr($candidate, 0, 60);
+                }
+                break;
+            }
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO anonymous_chats (session_id, title, messages) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE messages = VALUES(messages), updated_at = NOW()'
+        );
+        $stmt->execute([session_id(), $title, json_encode($transcript, JSON_UNESCAPED_UNICODE)]);
+    } catch (Throwable $e) {
+        error_log('[NKT-1 chat.php] anonymous chat logging failed: ' . $e->getMessage());
+    }
 }
 
 echo json_encode($result, JSON_UNESCAPED_UNICODE);
