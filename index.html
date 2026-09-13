@@ -256,7 +256,7 @@
     30% { opacity: 1; }
   }
 
-  form {
+  #composer {
     position: absolute;
     left: 0; right: 0; bottom: 0;
     z-index: 2;
@@ -272,7 +272,7 @@
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    header, form {
+    header, #composer {
       background: var(--paper-warm);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
@@ -351,10 +351,119 @@
 
   @media (max-width: 560px) {
     body { font-size: 16px; }
-    header, #transcript, form { padding-left: 16px; padding-right: 16px; }
+    header, #transcript, #composer { padding-left: 16px; padding-right: 16px; }
     .turn { grid-template-columns: 1fr; gap: 6px; }
     .who { padding-top: 0; }
   }
+
+  header { flex-wrap: wrap; row-gap: 8px; }
+
+  .textbtn {
+    position: relative;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-soft);
+    padding: 2px 0;
+    cursor: pointer;
+    transition: color 120ms ease-out, border-color 120ms ease-out, opacity 90ms ease-out;
+  }
+  .textbtn:hover { color: var(--ink); border-color: var(--ink); }
+  .textbtn:active { opacity: 0.6; }
+  .textbtn::after {
+    content: "";
+    position: absolute;
+    top: -16px; bottom: -16px; left: -12px; right: -12px;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(20, 22, 28, 0.35);
+    background: color-mix(in srgb, var(--ink) 35%, transparent);
+  }
+  .overlay[hidden] { display: none; }
+
+  .card {
+    width: 100%;
+    max-width: 360px;
+    max-height: 100%;
+    overflow-y: auto;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    padding: 24px;
+    position: relative;
+  }
+
+  .card h2 { margin: 0 0 18px; font-size: 18px; font-weight: 500; }
+
+  .card .textbtn.close {
+    position: absolute;
+    top: 18px; right: 20px;
+  }
+  .card .textbtn.close::after { top: -14px; bottom: -14px; }
+
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+  .field input {
+    width: 100%;
+    font-family: var(--serif);
+    font-size: 16px;
+    color: var(--ink);
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--rule);
+    padding: 6px 0;
+  }
+  .field input:focus { outline: none; border-color: var(--ink); }
+
+  .card-actions { display: flex; align-items: center; gap: 16px; margin-top: 18px; }
+  .card-actions button[type="submit"] { min-height: 38px; padding: 8px 16px; }
+
+  .card-msg { margin: 12px 0 0; font-size: 14px; }
+  .card-msg[data-tone="error"] { color: var(--alert); }
+  .card-msg[data-tone="ok"] { color: var(--mark); }
+
+  .convo-list { list-style: none; margin: 0; padding: 0; }
+  .convo-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--rule) 50%, transparent);
+  }
+  .convo-item .convo-open {
+    flex: 1;
+    text-align: left;
+    background: none;
+    border: none;
+    font-family: var(--serif);
+    font-size: 15px;
+    color: var(--ink);
+    cursor: pointer;
+    padding: 4px 0;
+    overflow-wrap: anywhere;
+  }
+  .convo-item .convo-open:hover { color: var(--mark); }
+  .convo-empty { color: var(--ink-soft); font-style: italic; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -362,8 +471,9 @@
 <div class="frame">
   <header>
     <h1>NKT-1</h1>
-    <div style="display:flex;align-items:baseline;gap:14px">
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">
       <span class="meta">NikTaRas AI</span>
+      <div id="accountArea" style="display:flex;align-items:baseline;gap:14px"></div>
       <button type="button" class="clear" id="clear">Clear</button>
     </div>
   </header>
@@ -377,6 +487,36 @@
     <textarea id="input" rows="1" placeholder="Type a message…" aria-label="Message" autocomplete="off"></textarea>
     <button type="submit" id="send">Send</button>
   </form>
+
+  <div class="overlay" id="authOverlay" hidden>
+    <div class="card">
+      <button type="button" class="textbtn close" id="authClose" aria-label="Close">Close</button>
+      <h2 id="authTitle">Log In</h2>
+      <form id="authForm">
+        <div class="field">
+          <label for="authEmail">Email</label>
+          <input type="email" id="authEmail" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="authPassword">Password</label>
+          <input type="password" id="authPassword" autocomplete="current-password" required minlength="8">
+        </div>
+        <div class="card-actions">
+          <button type="submit" id="authSubmit">Log In</button>
+          <button type="button" class="textbtn" id="authSwitch">Need an account? Sign up</button>
+        </div>
+      </form>
+      <p class="card-msg" id="authMsg" hidden></p>
+    </div>
+  </div>
+
+  <div class="overlay" id="savedOverlay" hidden>
+    <div class="card">
+      <button type="button" class="textbtn close" id="savedClose" aria-label="Close">Close</button>
+      <h2>Saved Chats</h2>
+      <ul class="convo-list" id="convoList"></ul>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -395,10 +535,34 @@
   var sendBtn = document.getElementById("send");
   var clearBtn = document.getElementById("clear");
   var webToggle = document.getElementById("webToggle");
+  var accountArea = document.getElementById("accountArea");
+
+  var authOverlay = document.getElementById("authOverlay");
+  var authTitle = document.getElementById("authTitle");
+  var authForm = document.getElementById("authForm");
+  var authEmail = document.getElementById("authEmail");
+  var authPassword = document.getElementById("authPassword");
+  var authSubmit = document.getElementById("authSubmit");
+  var authSwitch = document.getElementById("authSwitch");
+  var authMsg = document.getElementById("authMsg");
+  var authClose = document.getElementById("authClose");
+
+  var savedOverlay = document.getElementById("savedOverlay");
+  var savedClose = document.getElementById("savedClose");
+  var convoList = document.getElementById("convoList");
 
   var history = [];
   var busy = false;
   var webAccess = false;
+
+  // Accounts are optional: chat works fully signed out. When logged in,
+  // conversationId ties the running chat to a saved row so replies keep
+  // appending to the same conversation instead of creating a new one.
+  var csrfToken = "";
+  var loggedIn = false;
+  var userEmail = null;
+  var conversationId = null;
+  var authMode = "login";
 
   // Header and composer float over the transcript (translucent, blurred);
   // keep the scrollable area's padding matched to their live heights so
@@ -573,6 +737,284 @@
     input.style.height = Math.min(input.scrollHeight, 160) + "px";
   }
 
+  function renderAccountUI() {
+    accountArea.innerHTML = "";
+
+    if (loggedIn) {
+      var email = document.createElement("span");
+      email.className = "meta";
+      email.textContent = userEmail;
+      accountArea.appendChild(email);
+
+      var savedBtn = document.createElement("button");
+      savedBtn.type = "button";
+      savedBtn.className = "textbtn";
+      savedBtn.textContent = "Saved";
+      savedBtn.addEventListener("click", openSaved);
+      accountArea.appendChild(savedBtn);
+
+      var logoutBtn = document.createElement("button");
+      logoutBtn.type = "button";
+      logoutBtn.className = "textbtn";
+      logoutBtn.textContent = "Log Out";
+      logoutBtn.addEventListener("click", logout);
+      accountArea.appendChild(logoutBtn);
+    } else {
+      var loginBtn = document.createElement("button");
+      loginBtn.type = "button";
+      loginBtn.className = "textbtn";
+      loginBtn.textContent = "Log In";
+      loginBtn.addEventListener("click", function () { openAuth("login"); });
+      accountArea.appendChild(loginBtn);
+
+      var signupBtn = document.createElement("button");
+      signupBtn.type = "button";
+      signupBtn.className = "textbtn";
+      signupBtn.textContent = "Sign Up";
+      signupBtn.addEventListener("click", function () { openAuth("register"); });
+      accountArea.appendChild(signupBtn);
+    }
+
+    syncInsets();
+  }
+
+  async function refreshSession() {
+    try {
+      var response = await fetch("api/me.php", { credentials: "same-origin" });
+      var data = await response.json();
+      csrfToken = data.csrfToken || "";
+      loggedIn = !!data.loggedIn;
+      userEmail = data.email || null;
+    } catch (err) {
+      // Accounts are optional -- if the backend/DB isn't configured yet,
+      // the chat itself must keep working signed out.
+      loggedIn = false;
+      userEmail = null;
+    }
+    renderAccountUI();
+  }
+
+  function showAuthMsg(text, tone) {
+    authMsg.textContent = text;
+    authMsg.dataset.tone = tone || "";
+    authMsg.hidden = !text;
+  }
+
+  function openAuth(mode) {
+    authMode = mode;
+    authTitle.textContent = mode === "login" ? "Log In" : "Sign Up";
+    authSubmit.textContent = mode === "login" ? "Log In" : "Sign Up";
+    authSwitch.textContent = mode === "login" ? "Need an account? Sign up" : "Have an account? Log in";
+    authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
+    showAuthMsg("");
+    authForm.hidden = false;
+    authOverlay.hidden = false;
+    authEmail.focus();
+  }
+
+  function closeAuth() {
+    authOverlay.hidden = true;
+    authForm.reset();
+    showAuthMsg("");
+  }
+
+  authClose.addEventListener("click", closeAuth);
+  authSwitch.addEventListener("click", function () {
+    openAuth(authMode === "login" ? "register" : "login");
+  });
+
+  authForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var endpoint = authMode === "login" ? "api/login.php" : "api/register.php";
+    var email = authEmail.value.trim();
+    var password = authPassword.value;
+
+    authSubmit.disabled = true;
+    showAuthMsg("");
+
+    try {
+      var response = await fetch(endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ email: email, password: password })
+      });
+      var data = await response.json();
+
+      if (!response.ok) {
+        showAuthMsg(data.error || "Something went wrong.", "error");
+        return;
+      }
+
+      if (authMode === "login") {
+        loggedIn = true;
+        userEmail = data.email;
+        renderAccountUI();
+        closeAuth();
+      } else {
+        authForm.hidden = true;
+        showAuthMsg(data.message, "ok");
+      }
+    } catch (err) {
+      showAuthMsg("Could not reach the server. Please try again.", "error");
+    } finally {
+      authSubmit.disabled = false;
+    }
+  });
+
+  async function logout() {
+    try {
+      await fetch("api/logout.php", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "X-CSRF-Token": csrfToken }
+      });
+    } catch (err) {
+      // Fall through: reset local state either way and let refreshSession
+      // pick up an authoritative csrf token for the (now anonymous) session.
+    }
+    conversationId = null;
+    await refreshSession();
+  }
+
+  function startNewChat() {
+    conversationId = null;
+    history = [];
+    transcript.innerHTML = '<p class="empty">Ask something to begin.</p>';
+  }
+
+  async function saveConversation() {
+    if (!loggedIn) return;
+    try {
+      var response = await fetch("api/conversations.php", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ id: conversationId, messages: history })
+      });
+
+      if (response.status === 404) {
+        // The saved row was deleted elsewhere; start a fresh one next time.
+        conversationId = null;
+        response = await fetch("api/conversations.php", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+          body: JSON.stringify({ id: null, messages: history })
+        });
+      }
+
+      var data = await response.json();
+      if (response.ok && data.id) {
+        conversationId = data.id;
+      }
+    } catch (err) {
+      // Saving is best-effort and must never interrupt the chat itself.
+    }
+  }
+
+  function renderTranscriptFrom(messages) {
+    transcript.innerHTML = "";
+    messages.forEach(function (m) {
+      if (m.role === "model") {
+        var body = addTurn("model", "");
+        body.innerHTML = renderMarkdown(m.text);
+      } else {
+        addTurn("user", m.text);
+      }
+    });
+    if (messages.length === 0) {
+      transcript.innerHTML = '<p class="empty">Ask something to begin.</p>';
+    }
+  }
+
+  async function loadConversation(id) {
+    try {
+      var response = await fetch("api/conversations.php?id=" + encodeURIComponent(id), { credentials: "same-origin" });
+      var data = await response.json();
+      if (!response.ok) return;
+
+      conversationId = data.id;
+      history = data.messages || [];
+      renderTranscriptFrom(history);
+      closeSaved();
+    } catch (err) {
+      // Leave the current chat untouched on failure.
+    }
+  }
+
+  function renderConvoList(items) {
+    convoList.innerHTML = "";
+
+    if (!items.length) {
+      var empty = document.createElement("li");
+      empty.className = "convo-empty";
+      empty.textContent = "No saved chats yet.";
+      convoList.appendChild(empty);
+      return;
+    }
+
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      li.className = "convo-item";
+
+      var openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "convo-open";
+      openBtn.textContent = item.title || "Untitled chat";
+      openBtn.addEventListener("click", function () { loadConversation(item.id); });
+
+      var delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "textbtn";
+      delBtn.textContent = "Delete";
+      var armed = false;
+      var armTimer = null;
+      delBtn.addEventListener("click", async function () {
+        if (!armed) {
+          armed = true;
+          delBtn.textContent = "Confirm?";
+          armTimer = setTimeout(function () { armed = false; delBtn.textContent = "Delete"; }, 3000);
+          return;
+        }
+        clearTimeout(armTimer);
+        try {
+          await fetch("api/conversations.php?id=" + encodeURIComponent(item.id), {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: { "X-CSRF-Token": csrfToken }
+          });
+        } catch (err) {
+          // Ignore -- the list refresh below reflects actual server state.
+        }
+        if (conversationId === item.id) conversationId = null;
+        openSaved();
+      });
+
+      li.appendChild(openBtn);
+      li.appendChild(delBtn);
+      convoList.appendChild(li);
+    });
+  }
+
+  async function openSaved() {
+    savedOverlay.hidden = false;
+    convoList.innerHTML = '<li class="convo-empty">Loading…</li>';
+    try {
+      var response = await fetch("api/conversations.php", { credentials: "same-origin" });
+      var data = await response.json();
+      renderConvoList(response.ok && Array.isArray(data) ? data : []);
+    } catch (err) {
+      renderConvoList([]);
+    }
+  }
+
+  function closeSaved() {
+    savedOverlay.hidden = true;
+  }
+
+  savedClose.addEventListener("click", closeSaved);
+
   async function send(text) {
     history.push({ role: "user", text: text });
     addTurn("user", text);
@@ -598,6 +1040,7 @@
         slot.appendChild(renderSources(data.sources));
       }
       history.push({ role: "model", text: data.reply });
+      saveConversation();
 
     } catch (err) {
       slot.textContent = err.message;
@@ -630,9 +1073,9 @@
 
   input.addEventListener("input", autoGrow);
 
-  // Clearing is the only unrecoverable action in the app (nothing is persisted
-  // elsewhere), so require a second click within a short window rather than
-  // wiping the conversation on one accidental tap.
+  // Clearing wipes the visible conversation with no undo, so require a
+  // second click within a short window rather than wiping it on one
+  // accidental tap.
   var clearArmed = false;
   var clearArmTimer = null;
 
@@ -652,8 +1095,7 @@
     clearTimeout(clearArmTimer);
     clearArmed = false;
     clearBtn.textContent = "Clear";
-    history = [];
-    transcript.innerHTML = '<p class="empty">Ask something to begin.</p>';
+    startNewChat();
     input.focus();
   });
 
@@ -663,6 +1105,7 @@
   });
 
   input.focus();
+  refreshSession();
 })();
 </script>
 

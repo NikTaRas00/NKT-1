@@ -10,6 +10,7 @@ A lightweight chat interface for NKT-1, a model developed by the NikTaras AI div
 - PHP backend proxy (`api/chat.php`) that talks to the Gemini API under the hood, keeping the API key server-side.
 - Optional live web search via [Tavily](https://tavily.com) (free tier, 1,000 searches/month), toggled per-message with the "Web Access" button next to the prompt input and wired up through Gemini function calling.
 - Markdown rendering and source citations in the chat UI.
+- Optional user accounts (email + password, email verification required) backed by MySQL. Chat works fully anonymously either way — logging in just adds saved chat history.
 
 ## Project structure
 
@@ -21,13 +22,23 @@ A lightweight chat interface for NKT-1, a model developed by the NikTaras AI div
 └── api/
     ├── chat.php            # Backend endpoint the frontend calls
     ├── config.php           # Loads secrets from .env or server env vars
+    ├── helpers.php           # Shared load_config() + verification email sender
+    ├── db.php                # PDO MySQL connection
+    ├── auth_helpers.php      # Session bootstrap, CSRF, current-user helpers
+    ├── register.php          # POST: create account, email a verification link
+    ├── verify.php            # GET: confirms the emailed verification link
+    ├── login.php             # POST: authenticates, starts a session
+    ├── logout.php            # POST: ends the session
+    ├── me.php                # GET: current session state + CSRF token
+    ├── conversations.php     # GET/POST/DELETE: saved chat history (requires login)
+    ├── schema.sql             # MySQL tables for accounts + saved chats
     ├── .env.example          # Template for required environment variables
     └── SYSTEM_PROMPT.txt     # System prompt sent to Gemini
 ```
 
 ## Setup
 
-Requires PHP with the `curl` and `mbstring` extensions.
+Requires PHP with the `curl`, `mbstring`, and `pdo_mysql` extensions.
 
 1. Clone the repo into your web server's document root (or a subdirectory of it).
 2. Copy `api/.env.example` to `api/.env` and fill in your keys:
@@ -37,6 +48,15 @@ Requires PHP with the `curl` and `mbstring` extensions.
    ```
    `api/.env` is never committed — see `.htaccess`, which also blocks direct HTTP access to it.
 3. Serve the directory with Apache (or any server that honors `.htaccess` and runs PHP). Open `index.html` in a browser.
+
+### Enabling accounts (optional)
+
+Chat works fully signed out without any of this. To enable accounts and saved chat history:
+
+1. In cPanel, create a MySQL database and a database user (MySQL Databases page), and note the host/name/user/password.
+2. Run `api/schema.sql` against that database (e.g. via phpMyAdmin's SQL tab) to create the `users` and `conversations` tables.
+3. Fill in the `DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASS`, `SITE_URL`, and `MAIL_FROM` keys in `api/.env` (see `api/.env.example`).
+4. Verification emails are sent with PHP's built-in `mail()` — no SMTP setup needed, but deliverability depends on your host's mail configuration and your domain's SPF/DKIM records.
 
 ### Deploying to a subdirectory
 

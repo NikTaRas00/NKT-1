@@ -3,16 +3,12 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/helpers.php';
+
 const MODEL = 'gemini-3.5-flash-lite';
 const MAX_MESSAGES = 40;
 const MAX_CHARS = 4000;
 const SEARCH_RESULT_COUNT = 5;
-
-function load_config(): array
-{
-    $path = __DIR__ . '/config.php';
-    return is_readable($path) ? (require $path) : [];
-}
 
 function load_system_prompt(): string
 {

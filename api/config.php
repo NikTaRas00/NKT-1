@@ -37,4 +37,13 @@ return [
     // Optional: enables live web search via Tavily (free, no billing
     // required, 1,000 searches/month). Leave blank to disable.
     'TAVILY_API_KEY' => niktaras_env('TAVILY_API_KEY', $dotenv),
+    // Required for accounts/saved chats (see api/schema.sql).
+    'DB_HOST' => niktaras_env('DB_HOST', $dotenv) ?: 'localhost',
+    'DB_NAME' => niktaras_env('DB_NAME', $dotenv),
+    'DB_USER' => niktaras_env('DB_USER', $dotenv),
+    'DB_PASS' => niktaras_env('DB_PASS', $dotenv),
+    // Used to build the verification link emailed to new users, and as the
+    // "From" address on that email.
+    'SITE_URL' => niktaras_env('SITE_URL', $dotenv),
+    'MAIL_FROM' => niktaras_env('MAIL_FROM', $dotenv) ?: 'noreply@localhost',
 ];
