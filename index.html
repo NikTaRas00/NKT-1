@@ -493,6 +493,24 @@
       <ul class="convo-list" id="convoList"></ul>
     </div>
   </div>
+
+  <div class="overlay" id="codeOverlay" hidden>
+    <div class="card">
+      <button type="button" class="textbtn close" id="codeClose" aria-label="Close">Close</button>
+      <h2>Access Code</h2>
+      <p class="card-msg" id="codeExplain"></p>
+      <form id="codeForm">
+        <div class="field">
+          <label for="codeInput">Code</label>
+          <input type="password" id="codeInput" autocomplete="off" required>
+        </div>
+        <div class="card-actions">
+          <button type="submit" id="codeSubmit">Continue</button>
+        </div>
+      </form>
+      <p class="card-msg" id="codeMsg" hidden></p>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -527,6 +545,14 @@
   var savedClose = document.getElementById("savedClose");
   var convoList = document.getElementById("convoList");
 
+  var codeOverlay = document.getElementById("codeOverlay");
+  var codeClose = document.getElementById("codeClose");
+  var codeExplain = document.getElementById("codeExplain");
+  var codeForm = document.getElementById("codeForm");
+  var codeInput = document.getElementById("codeInput");
+  var codeSubmit = document.getElementById("codeSubmit");
+  var codeMsg = document.getElementById("codeMsg");
+
   var history = [];
   var busy = false;
   var webAccess = false;
@@ -539,6 +565,10 @@
   var userEmail = null;
   var conversationId = null;
   var authMode = "login";
+
+  // Set while the access-code modal (rate limit reached) is open, so the
+  // code form knows which in-flight message/turn to retry.
+  var pendingSend = null;
 
   // Header and composer float over the transcript (translucent, blurred);
   // keep the scrollable area's padding matched to their live heights so
@@ -991,21 +1021,76 @@
 
   savedClose.addEventListener("click", closeSaved);
 
-  async function send(text) {
-    history.push({ role: "user", text: text });
-    addTurn("user", text);
+  function markSlotError(slot, message) {
+    slot.textContent = message;
+    slot.parentElement.setAttribute("data-role", "error");
+    slot.parentElement.querySelector(".who").textContent = "Error";
+  }
 
-    var slot = showWaiting();
-    setBusy(true);
+  function finishSend() {
+    setBusy(false);
+    transcript.scrollTop = transcript.scrollHeight;
+    input.focus();
+  }
 
+  function openCodeModal(message) {
+    codeExplain.textContent = message;
+    codeMsg.hidden = true;
+    codeInput.value = "";
+    codeOverlay.hidden = false;
+    codeInput.focus();
+  }
+
+  function closeCodeModal() {
+    codeOverlay.hidden = true;
+    codeForm.reset();
+  }
+
+  codeClose.addEventListener("click", function () {
+    // Cancelling means the message never actually went through.
+    if (pendingSend) {
+      markSlotError(pendingSend.slot, "Access code required to send another message this hour.");
+      history.pop();
+      finishSend();
+      pendingSend = null;
+    }
+    closeCodeModal();
+  });
+
+  codeForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!pendingSend) return;
+    var code = codeInput.value;
+    codeSubmit.disabled = true;
+    await attemptSend(pendingSend.slot, code);
+    codeSubmit.disabled = false;
+  });
+
+  async function attemptSend(slot, code) {
     try {
       var response = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, system: SYSTEM_PROMPT, webAccess: webAccess })
+        body: JSON.stringify({ messages: history, system: SYSTEM_PROMPT, webAccess: webAccess, unlockCode: code || "" })
       });
 
       var data = await response.json();
+
+      if (response.status === 429 && data.needsCode) {
+        if (pendingSend) {
+          // A code was already tried and rejected -- keep the modal open.
+          codeMsg.textContent = data.error || "Incorrect code.";
+          codeMsg.dataset.tone = "error";
+          codeMsg.hidden = false;
+          codeInput.value = "";
+          codeInput.focus();
+        } else {
+          slot.textContent = "Waiting for an access code…";
+          pendingSend = { slot: slot };
+          openCodeModal(data.error || "You've reached the hourly limit. Enter your access code to continue.");
+        }
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data.error || "Request failed.");
@@ -1017,17 +1102,26 @@
       }
       history.push({ role: "model", text: data.reply });
       saveConversation();
+      pendingSend = null;
+      closeCodeModal();
+      finishSend();
 
     } catch (err) {
-      slot.textContent = err.message;
-      slot.parentElement.setAttribute("data-role", "error");
-      slot.parentElement.querySelector(".who").textContent = "Error";
+      markSlotError(slot, err.message);
       history.pop();
-    } finally {
-      setBusy(false);
-      transcript.scrollTop = transcript.scrollHeight;
-      input.focus();
+      pendingSend = null;
+      closeCodeModal();
+      finishSend();
     }
+  }
+
+  async function send(text) {
+    history.push({ role: "user", text: text });
+    addTurn("user", text);
+
+    var slot = showWaiting();
+    setBusy(true);
+    await attemptSend(slot, null);
   }
 
   form.addEventListener("submit", function (e) {

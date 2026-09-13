@@ -46,4 +46,7 @@ return [
     // "From" address on that email.
     'SITE_URL' => niktaras_env('SITE_URL', $dotenv),
     'MAIL_FROM' => niktaras_env('MAIL_FROM', $dotenv) ?: 'noreply@localhost',
+    // Lets a visitor bypass the 5-messages/hour rate limit one message at a
+    // time (see api/chat.php). Leave blank to disable bypassing entirely.
+    'UNLOCK_CODE' => niktaras_env('UNLOCK_CODE', $dotenv),
 ];

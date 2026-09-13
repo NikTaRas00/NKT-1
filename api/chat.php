@@ -3,12 +3,14 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/auth_helpers.php';
 
 const MODEL = 'gemini-3.5-flash-lite';
 const MAX_MESSAGES = 40;
 const MAX_CHARS = 4000;
 const SEARCH_RESULT_COUNT = 5;
+const RATE_LIMIT = 5;
+const RATE_LIMIT_WINDOW = 3600;
 
 function load_system_prompt(): string
 {
@@ -139,6 +141,37 @@ $apiKey = trim((string)($config['GEMINI_API_KEY'] ?? ''));
 if ($apiKey === '') {
     fail(500, "NKT-1 isn't configured correctly right now. Please try again later.", 'GEMINI_API_KEY missing in api/config.php');
 }
+
+// 5 prompts/hour per browser session; once spent, each further message needs
+// a correct UNLOCK_CODE (api/.env), one message at a time -- the window and
+// count are never reset just for entering a code, so it must be re-entered
+// for every message after the fifth until the hour rolls over.
+bootstrap_session();
+
+$now = time();
+if (empty($_SESSION['rate_window_start']) || ($now - $_SESSION['rate_window_start']) >= RATE_LIMIT_WINDOW) {
+    $_SESSION['rate_window_start'] = $now;
+    $_SESSION['rate_count'] = 0;
+}
+
+if (($_SESSION['rate_count'] ?? 0) >= RATE_LIMIT) {
+    $validCode = trim((string)($config['UNLOCK_CODE'] ?? ''));
+    $providedCode = trim((string)($payload['unlockCode'] ?? ''));
+    $codeOk = $validCode !== '' && $providedCode !== '' && hash_equals($validCode, $providedCode);
+
+    if (!$codeOk) {
+        http_response_code(429);
+        echo json_encode([
+            'error' => $providedCode === ''
+                ? "You've reached the hourly limit. Enter your access code to send another message."
+                : 'Incorrect code.',
+            'needsCode' => true,
+        ]);
+        exit;
+    }
+}
+
+$_SESSION['rate_count'] = ($_SESSION['rate_count'] ?? 0) + 1;
 
 $tavilyApiKey = trim((string)($config['TAVILY_API_KEY'] ?? ''));
 $webAccessRequested = ($payload['webAccess'] ?? false) === true;

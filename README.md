@@ -11,6 +11,7 @@ A lightweight chat interface for NKT-1, a model developed by the NikTaras AI div
 - Optional live web search via [Tavily](https://tavily.com) (free tier, 1,000 searches/month), toggled per-message with the "Web Access" button next to the prompt input and wired up through Gemini function calling.
 - Markdown rendering and source citations in the chat UI.
 - Optional user accounts (email + password, email verification required) backed by MySQL. Chat works fully anonymously either way — logging in just adds saved chat history.
+- Rate limit of 5 messages/hour per browser session. Past that, an access code (set via `UNLOCK_CODE` in `.env`) unlocks exactly one more message at a time.
 
 ## Project structure
 
