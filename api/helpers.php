@@ -23,5 +23,11 @@ function send_verification_email(string $email, string $rawToken): void
     $body = "Welcome to NKT-1!\n\nVerify your email by opening this link:\n{$link}\n\nThis link expires in 24 hours. If you didn't request this, ignore this email.";
     $headers = "From: NKT-1 <{$from}>\r\nContent-Type: text/plain; charset=utf-8";
 
-    mail($email, $subject, $body, $headers);
+    $sent = mail($email, $subject, $body, $headers);
+    if (!$sent) {
+        $lastError = error_get_last();
+        error_log('[NKT-1 mail] mail() returned false sending to ' . $email . ($lastError ? (' | ' . $lastError['message']) : ''));
+    } else {
+        error_log('[NKT-1 mail] mail() accepted for delivery to ' . $email);
+    }
 }
