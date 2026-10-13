@@ -17,7 +17,7 @@ function send_verification_email(string $email, string $rawToken): bool
     $config = load_config();
     $siteUrl = rtrim((string)($config['SITE_URL'] ?? ''), '/');
     $from = trim((string)($config['MAIL_FROM'] ?? ''));
-    if ($from === '' || !filter_var($from, FILTER_VALIDATE_EMAIL) || str_ends_with($from, '@localhost')) {
+    if ($from === '' || !filter_var($from, FILTER_VALIDATE_EMAIL) || substr($from, -10) === '@localhost') {
         // Shared hosts reject/drop mail from a non-domain sender, so this is
         // almost certainly the reason mail never arrives.
         error_log('[NKT-1 mail] MAIL_FROM is missing or invalid ("' . $from . '"); set it to an address on your own domain in api/.env');
