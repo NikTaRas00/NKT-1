@@ -43,6 +43,34 @@ try {
         exit;
     }
 
+    if ($method === 'DELETE') {
+        require_csrf();
+
+        $id = (int)($_GET['id'] ?? 0);
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Request needs a valid "id".']);
+            exit;
+        }
+
+        // Explicit deletes in a transaction rather than relying solely on the
+        // ON DELETE CASCADE foreign key, in case the table was created without it.
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM conversations WHERE user_id = ?')->execute([$id]);
+        $del = $pdo->prepare('DELETE FROM users WHERE id = ?');
+        $del->execute([$id]);
+        if ($del->rowCount() === 0) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['error' => 'Not found.']);
+            exit;
+        }
+        $pdo->commit();
+
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
     if ($method === 'POST') {
         require_csrf();
 

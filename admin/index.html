@@ -424,6 +424,20 @@
     view.appendChild(rateForm);
     view.appendChild(el("p", { class: "meta", text: "Used " + user.rate_count + " this window · window started " + fmtDate(user.rate_window_start) }));
 
+    var deleteBtn = el("button", { type: "button", class: "textbtn", text: "Delete Account", style: "margin-top:12px;color:#e5484d" });
+    deleteBtn.addEventListener("click", async function () {
+      if (!window.confirm("Permanently delete " + user.email + " and all " + user.conversations.length + " saved chat(s)? This cannot be undone.")) return;
+      deleteBtn.disabled = true;
+      try {
+        await api("../api/admin_users.php?id=" + encodeURIComponent(user.id), { method: "DELETE" });
+        loadAccounts();
+      } catch (err) {
+        deleteBtn.disabled = false;
+        view.appendChild(el("p", { class: "error", text: err.message }));
+      }
+    });
+    view.appendChild(deleteBtn);
+
     view.appendChild(el("h2", { text: "Saved Chats", style: "margin-top:28px" }));
 
     if (!user.conversations.length) {

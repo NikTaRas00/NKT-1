@@ -12,22 +12,39 @@ function load_config(): array
     return $config;
 }
 
-function send_verification_email(string $email, string $rawToken): void
+function send_verification_email(string $email, string $rawToken): bool
 {
     $config = load_config();
     $siteUrl = rtrim((string)($config['SITE_URL'] ?? ''), '/');
-    $from = (string)($config['MAIL_FROM'] ?? 'noreply@localhost');
+    $from = trim((string)($config['MAIL_FROM'] ?? ''));
+    if ($from === '' || !filter_var($from, FILTER_VALIDATE_EMAIL) || str_ends_with($from, '@localhost')) {
+        // Shared hosts reject/drop mail from a non-domain sender, so this is
+        // almost certainly the reason mail never arrives.
+        error_log('[NKT-1 mail] MAIL_FROM is missing or invalid ("' . $from . '"); set it to an address on your own domain in api/.env');
+        return false;
+    }
     $link = $siteUrl . '/api/verify.php?token=' . $rawToken;
 
     $subject = 'Verify your NKT-1 account';
-    $body = "Welcome to NKT-1!\n\nVerify your email by opening this link:\n{$link}\n\nThis link expires in 24 hours. If you didn't request this, ignore this email.";
-    $headers = "From: NKT-1 <{$from}>\r\nContent-Type: text/plain; charset=utf-8";
+    $body = "Welcome to NKT-1!\r\n\r\nVerify your email by opening this link:\r\n{$link}\r\n\r\nThis link expires in 24 hours. If you didn't request this, ignore this email.\r\n";
+    $domain = substr(strrchr($from, '@'), 1);
+    $headers = implode("\r\n", [
+        "From: NKT-1 <{$from}>",
+        "Reply-To: {$from}",
+        'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . $domain . '>',
+        'Date: ' . date('r'),
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=utf-8',
+    ]);
 
-    $sent = mail($email, $subject, $body, $headers);
+    // -f sets the envelope sender (Return-Path). cPanel/Exim and most spam
+    // filters require it to match a real address on the domain.
+    $sent = mail($email, $subject, $body, $headers, '-f' . $from);
     if (!$sent) {
         $lastError = error_get_last();
         error_log('[NKT-1 mail] mail() returned false sending to ' . $email . ($lastError ? (' | ' . $lastError['message']) : ''));
     } else {
         error_log('[NKT-1 mail] mail() accepted for delivery to ' . $email);
     }
+    return $sent;
 }

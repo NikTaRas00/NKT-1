@@ -53,11 +53,17 @@ if ($existing && $existing['email_verified_at'] !== null) {
 } elseif ($existing) {
     $stmt = $pdo->prepare('UPDATE users SET password_hash = ?, verification_token_hash = ?, verification_token_expires_at = ? WHERE id = ?');
     $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $tokenHash, $expiresAt, $existing['id']]);
-    send_verification_email($email, $rawToken);
+    $mailOk = send_verification_email($email, $rawToken);
 } else {
     $stmt = $pdo->prepare('INSERT INTO users (email, password_hash, verification_token_hash, verification_token_expires_at) VALUES (?, ?, ?, ?)');
     $stmt->execute([$email, password_hash($password, PASSWORD_DEFAULT), $tokenHash, $expiresAt]);
-    send_verification_email($email, $rawToken);
+    $mailOk = send_verification_email($email, $rawToken);
+}
+
+if (isset($mailOk) && !$mailOk) {
+    http_response_code(500);
+    echo json_encode(['error' => "We couldn't send the verification email. Please try again in a few minutes."]);
+    exit;
 }
 
 echo json_encode(['message' => 'Check your email for a verification link.']);
