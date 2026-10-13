@@ -42,6 +42,11 @@ function send_verification_email(string $email, string $rawToken): bool
     $sent = mail($email, $subject, $body, $headers, '-f' . $from);
     if (!$sent) {
         $lastError = error_get_last();
+        error_log('[NKT-1 mail] mail() with -f failed for ' . $email . ($lastError ? (' | ' . $lastError['message']) : '') . ' -- retrying without -f');
+        $sent = mail($email, $subject, $body, $headers);
+    }
+    if (!$sent) {
+        $lastError = error_get_last();
         error_log('[NKT-1 mail] mail() returned false sending to ' . $email . ($lastError ? (' | ' . $lastError['message']) : ''));
     } else {
         error_log('[NKT-1 mail] mail() accepted for delivery to ' . $email);
