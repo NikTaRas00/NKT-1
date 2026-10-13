@@ -75,7 +75,13 @@ function smtp_send(array $config, string $from, string $to, string $subject, str
 
     $errno = 0;
     $errstr = '';
-    $fp = @stream_socket_client(($port === 465 ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 10);
+    // Talking to the mail server on this same machine: its cert is issued for
+    // the public hostname, not "localhost", so skip verification on loopback only.
+    $isLoopback = in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+    $ctx = stream_context_create(['ssl' => $isLoopback
+        ? ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true]
+        : ['verify_peer' => true, 'verify_peer_name' => true]]);
+    $fp = @stream_socket_client(($port === 465 ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 10, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
         error_log("[NKT-1 smtp] connect to $host:$port failed: $errstr ($errno)");
         return false;
