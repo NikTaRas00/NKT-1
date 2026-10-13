@@ -46,6 +46,13 @@ return [
     // "From" address on that email.
     'SITE_URL' => niktaras_env('SITE_URL', $dotenv),
     'MAIL_FROM' => niktaras_env('MAIL_FROM', $dotenv) ?: 'noreply@localhost',
+    // Optional but recommended: send verification mail over authenticated SMTP
+    // (a real cPanel mailbox) instead of PHP's mail(), which many shared hosts
+    // refuse. Leave SMTP_HOST/SMTP_USER blank to fall back to mail().
+    'SMTP_HOST' => niktaras_env('SMTP_HOST', $dotenv),
+    'SMTP_PORT' => niktaras_env('SMTP_PORT', $dotenv),
+    'SMTP_USER' => niktaras_env('SMTP_USER', $dotenv),
+    'SMTP_PASS' => niktaras_env('SMTP_PASS', $dotenv),
     // Lets a visitor bypass the 5-messages/hour rate limit one message at a
     // time (see api/chat.php). Leave blank to disable bypassing entirely.
     'UNLOCK_CODE' => niktaras_env('UNLOCK_CODE', $dotenv),

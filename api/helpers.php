@@ -37,6 +37,16 @@ function send_verification_email(string $email, string $rawToken): bool
         'Content-Type: text/plain; charset=utf-8',
     ]);
 
+    // Preferred path: authenticated SMTP through a real mailbox. Many shared
+    // hosts refuse PHP's mail() outright (it returns false with no reason).
+    if (!empty($config['SMTP_HOST']) && !empty($config['SMTP_USER'])) {
+        $sent = smtp_send($config, $from, $email, $subject, $headers, $body);
+        if ($sent) {
+            error_log('[NKT-1 mail] SMTP accepted for delivery to ' . $email);
+        }
+        return $sent;
+    }
+
     // -f sets the envelope sender (Return-Path). cPanel/Exim and most spam
     // filters require it to match a real address on the domain.
     $sent = mail($email, $subject, $body, $headers, '-f' . $from);
@@ -52,4 +62,80 @@ function send_verification_email(string $email, string $rawToken): bool
         error_log('[NKT-1 mail] mail() accepted for delivery to ' . $email);
     }
     return $sent;
+}
+
+// Minimal SMTP client (no Composer, PHP 7.4-safe). Port 465 = implicit TLS,
+// anything else = plain connect then STARTTLS. Logs the failing step.
+function smtp_send(array $config, string $from, string $to, string $subject, string $headers, string $body): bool
+{
+    $host = (string)$config['SMTP_HOST'];
+    $port = (int)($config['SMTP_PORT'] ?: 465);
+    $user = (string)$config['SMTP_USER'];
+    $pass = (string)($config['SMTP_PASS'] ?? '');
+
+    $errno = 0;
+    $errstr = '';
+    $fp = @stream_socket_client(($port === 465 ? 'ssl://' : 'tcp://') . $host . ':' . $port, $errno, $errstr, 10);
+    if (!$fp) {
+        error_log("[NKT-1 smtp] connect to $host:$port failed: $errstr ($errno)");
+        return false;
+    }
+    stream_set_timeout($fp, 10);
+
+    $read = function () use ($fp): string {
+        $out = '';
+        while (($line = fgets($fp, 515)) !== false) {
+            $out .= $line;
+            if (strlen($line) < 4 || $line[3] === ' ') {
+                break;
+            }
+        }
+        return $out;
+    };
+    $cmd = function (string $line, string $expect) use ($fp, $read, &$failed): bool {
+        if ($line !== '') {
+            fwrite($fp, $line . "\r\n");
+        }
+        $resp = $read();
+        if (strpos($resp, $expect) !== 0) {
+            // Credential lines are bare base64, so never echo them into the log.
+            $label = $line === '' ? '(greeting)' : (preg_match('/^[A-Z]+( |$)/', $line) ? $line : 'AUTH credentials');
+            $failed = $label . ' -> ' . trim($resp);
+            return false;
+        }
+        return true;
+    };
+
+    $failed = '';
+    $ehlo = 'EHLO ' . (gethostname() ?: 'localhost');
+    $ok = $cmd('', '220') && $cmd($ehlo, '250');
+    if ($ok && $port !== 465) {
+        $ok = $cmd('STARTTLS', '220')
+            && @stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)
+            && $cmd($ehlo, '250');
+    }
+    $ok = $ok
+        && $cmd('AUTH LOGIN', '334')
+        && $cmd(base64_encode($user), '334')
+        && $cmd(base64_encode($pass), '235')
+        && $cmd('MAIL FROM:<' . $from . '>', '250')
+        && $cmd('RCPT TO:<' . $to . '>', '250')
+        && $cmd('DATA', '354');
+    if ($ok) {
+        $message = 'To: <' . $to . ">\r\nSubject: " . $subject . "\r\n" . $headers . "\r\n\r\n"
+            . preg_replace('/^\./m', '..', $body);
+        fwrite($fp, $message . "\r\n.\r\n");
+        $resp = $read();
+        $ok = strpos($resp, '250') === 0;
+        if (!$ok) {
+            $failed = 'DATA end -> ' . trim($resp);
+        }
+    }
+    @fwrite($fp, "QUIT\r\n");
+    fclose($fp);
+
+    if (!$ok) {
+        error_log('[NKT-1 smtp] failed at: ' . ($failed !== '' ? $failed : 'STARTTLS handshake'));
+    }
+    return $ok;
 }
